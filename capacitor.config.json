@@ -1,0 +1,15 @@
+{
+  "appId": "app.scorerecord.tracker",
+  "appName": "Score Record",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#dfe7f0"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 1600
+    }
+  }
+}

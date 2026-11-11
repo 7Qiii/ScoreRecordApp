@@ -1,0 +1,16 @@
+.DS_Store
+node_modules/
+dist/
+*.log
+.env
+.env.local
+.env.ios.local
+.vercel/
+.claude/
+.workbuddy-ai/
+导出示例-*.xlsx
+
+# scripts/verify-ui.mjs 的输出（截图 + report.json），属于本地校验产物
+.verify/
+
+.vercel

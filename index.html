@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- theme-color 由下面那段内联脚本按当前主题改写，这里的初值只是脚本没跑起来时的兜底 -->
+    <meta name="theme-color" content="#dfe7f0" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- 主题必须在首屏渲染前定下来。
+         以前 data-theme 是等 Vue 挂载后才写的，于是「跟随系统 + 系统深色」会先
+         闪一下浅色再翻成深色；而且在这之前 <html> 上根本没有 data-theme，
+         CSS 里所有 [data-theme=...] 规则都落空。这里在解析阶段就按
+         「已存偏好 → 系统」算出最终值直接写到 <html> 上，
+         App.vue 挂载后会再执行一次同样的逻辑（幂等）。
+         必须放在样式表之前，否则第一帧还是会用错主题。 -->
+    <script>
+      (function () {
+        var root = document.documentElement;
+        if (navigator.standalone === true || window.matchMedia?.("(display-mode: standalone)").matches) {
+          root.dataset.standalone = "";
+        }
+        if (window.Capacitor?.getPlatform?.() === "ios") {
+          root.dataset.nativeIos = "";
+        }
+        try {
+          var mode = localStorage.getItem("exam-tracker-theme-mode");
+          if (mode !== "light" && mode !== "dark" && mode !== "system") mode = "system";
+          var resolved =
+            mode === "system"
+              ? window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : mode;
+          root.dataset.theme = resolved;
+          root.style.colorScheme = resolved;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", resolved === "dark" ? "#0f141b" : "#dfe7f0");
+        } catch (error) {
+          // 隐私模式下访问 localStorage 会抛错：退回浅色，不影响渲染
+          root.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <style>
+      #app-launch { display: none; }
+
+      :root:is([data-standalone], [data-native-ios]) #app-launch {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+        background: #dfe7f0;
+        color: #253451;
+        transition: opacity 220ms ease-out;
+      }
+
+      :root[data-theme="dark"] #app-launch {
+        background: #0f141b;
+        color: #e8edfa;
+      }
+
+      #app-launch.is-leaving { opacity: 0; }
+
+      #app-launch .launch-brand {
+        display: grid;
+        justify-items: center;
+        gap: 16px;
+        font: 600 1.25rem/1.2 system-ui, sans-serif;
+        animation: launch-brand-in 360ms cubic-bezier(.2, .7, .25, 1) both;
+      }
+
+      :root[data-native-ios] #app-launch:not(.is-playing) .launch-brand { animation: none; }
+
+      #app-launch .launch-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 18px;
+        background: #ccd8ff url("/icon.svg") center / contain no-repeat;
+        box-shadow: 0 12px 32px rgb(51 61 117 / .2);
+      }
+
+      @keyframes launch-brand-in {
+        from { opacity: .2; transform: translateY(8px) scale(.94); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        :root:is([data-standalone], [data-native-ios]) #app-launch { transition: none; }
+        #app-launch .launch-brand { animation: none; }
+      }
+    </style>
+    <!-- 用 default 而不是 black-translucent。
+         black-translucent 会让状态栏文字变白并浮在内容之上，而这个应用顶部在浅色
+         主题下是浅色的（#dfe7f0 起），白字在上面基本看不见；default 给不透明状态栏
+         + 深色文字，任何主题下都读得清。
+         配合下面的 viewport-fit=cover，还要靠 CSS 里的 safe-area-inset-top
+         把内容顶下来，否则内容仍然会钻到状态栏底下。 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-title" content="Score Record" />
+    <meta name="description" content="考研成绩追踪、错题记录与图片复盘工具：本地优先存储，支持多设备同步与 AI 错题解析。" />
+    <title>Score Record</title>
+    <!-- 这一组 link 是「装到桌面」能生效的前提。
+         之前 public/manifest.webmanifest 和 sw.js 都写好了，却没有在页面里
+         引用 manifest —— 浏览器根本不知道它的存在，于是 display:standalone、
+         快捷方式、图标全部失效，手机上点开就是带地址栏的网页。
+         所以先前的 PWA 只算「文件齐了」，实际是死的。 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- iOS 不认 SVG 主屏幕图标，必须给 PNG，否则装到桌面是个空白方块 -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- 启动图。没有这一组，从主屏幕点开会先闪一张白屏再出现内容 ——
+         iOS 不像安卓能用 manifest 的 background_color 自动生成，必须每种机型
+         的分辨率各给一张，靠 media 精确匹配（device-width/height 用 CSS 点）。
+         系统读取的是静态图片。网页开始渲染后，由下面的 #app-launch 接续动画。
+         图片由 scripts/gen-splash.mjs 生成，使用 App 的底色和导航轮廓。
+         每种机型两条：先浅色，再深色（深色那条多一个 prefers-color-scheme 条件）。
+         **顺序不能反** —— 万一 iOS 不支持带配色条件的启动图，会回落到前一条
+         浅色，而不是变成「一张都匹配不上」退回白闪。清单见 public/splash/screens.json。
+         iPad 是单独一组：它要区分横竖屏，所以每种尺寸 portrait / landscape 各一张。
+         注意横屏那条的 device-width 仍是**竖屏读数**（如 768×1024），只有图片是
+         2048×1536 —— device-width/height 在 iOS 上永远不随旋转变化，写反了这条
+         查询就永远匹配不上。上一版只列了 iPhone，iPad 上一条都匹配不到，于是
+         退回白屏，看着就像「iPad 不支持启动屏」。 -->
+    <link rel="apple-touch-startup-image" href="/splash/light/640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/640x1136.png" media="(prefers-color-scheme: dark) and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/750x1334.png" media="(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1125x2436.png" media="(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1170x2532.png" media="(prefers-color-scheme: dark) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1179x2556.png" media="(prefers-color-scheme: dark) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1206x2622.png" media="(prefers-color-scheme: dark) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/828x1792.png" media="(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1242x2688.png" media="(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1284x2778.png" media="(prefers-color-scheme: dark) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1290x2796.png" media="(prefers-color-scheme: dark) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1320x2868.png" media="(prefers-color-scheme: dark) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1536x2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1536x2048.png" media="(prefers-color-scheme: dark) and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2048x1536.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2048x1536.png" media="(prefers-color-scheme: dark) and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1620x2160.png" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1620x2160.png" media="(prefers-color-scheme: dark) and (device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2160x1620.png" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2160x1620.png" media="(prefers-color-scheme: dark) and (device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1640x2360.png" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1640x2360.png" media="(prefers-color-scheme: dark) and (device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2360x1640.png" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2360x1640.png" media="(prefers-color-scheme: dark) and (device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1668x2224.png" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1668x2224.png" media="(prefers-color-scheme: dark) and (device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2224x1668.png" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2224x1668.png" media="(prefers-color-scheme: dark) and (device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1668x2388.png" media="(prefers-color-scheme: dark) and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2388x1668.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2388x1668.png" media="(prefers-color-scheme: dark) and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2048x2732.png" media="(prefers-color-scheme: dark) and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2732x2048.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2732x2048.png" media="(prefers-color-scheme: dark) and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/1488x2266.png" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/1488x2266.png" media="(prefers-color-scheme: dark) and (device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/light/2266x1488.png" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="/splash/dark/2266x1488.png" media="(prefers-color-scheme: dark) and (device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+  </head>
+  <body>
+    <div id="app-launch" aria-hidden="true">
+      <div class="launch-brand">
+        <span class="launch-icon"></span>
+        <span>Score Record</span>
+      </div>
+    </div>
+    <div id="app"></div>
+    <script>
+      (function () {
+        var launch = document.getElementById("app-launch");
+        var root = document.documentElement;
+        var nativeIos = root.hasAttribute("data-native-ios");
+        if (!root.hasAttribute("data-standalone") && !nativeIos) {
+          launch.remove();
+          return;
+        }
+
+        var reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+        var startedAt = nativeIos ? null : performance.now();
+        var ready = false;
+        var deadline = window.setTimeout(dismiss, nativeIos ? 2200 : 1600);
+
+        function dismiss() {
+          document.removeEventListener("score-record:launch-ready", onReady);
+          document.removeEventListener("score-record:native-splash-hidden", onNativeSplashHidden);
+          if (reducedMotion?.matches) {
+            launch.remove();
+            return;
+          }
+          launch.classList.add("is-leaving");
+          window.setTimeout(function () { launch.remove(); }, 240);
+        }
+
+        function onReady() {
+          ready = true;
+          if (startedAt === null) return;
+          window.clearTimeout(deadline);
+          // 首页准备好时仍给入场动画留出完整的播放时间。
+          var delay = reducedMotion?.matches ? 0 : Math.max(0, 440 - (performance.now() - startedAt));
+          window.setTimeout(dismiss, delay);
+        }
+
+        function onNativeSplashHidden() {
+          // 入场从原生启动屏退场后计时，避免在启动屏背后提前播完。
+          startedAt = performance.now();
+          launch.classList.add("is-playing");
+          if (ready) onReady();
+        }
+
+        document.addEventListener("score-record:launch-ready", onReady, { once: true });
+        if (nativeIos) {
+          document.addEventListener("score-record:native-splash-hidden", onNativeSplashHidden, { once: true });
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

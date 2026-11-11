@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>启动屏诊断 · Score Record</title>
+    <style>
+      :root {
+        --bg: #dfe7f0;
+        --surface: #ffffff;
+        --ink: #18212f;
+        --muted: #5b6675;
+        --line: rgba(24, 33, 47, 0.12);
+        --ok: #1a7f5a;
+        --bad: #b42318;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 20px 16px calc(40px + env(safe-area-inset-bottom));
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.6 -apple-system, "PingFang SC", system-ui, sans-serif;
+        -webkit-text-size-adjust: 100%;
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+      }
+      h2 { font-size: 14px; margin: 0 0 10px; letter-spacing: .02em; }
+      dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+      dt { color: var(--muted); font-size: 13px; }
+      dd { margin: 0; font-size: 13px; font-weight: 600; word-break: break-all; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; }
+      td.yes { color: var(--ok); font-weight: 700; }
+      td.no { color: var(--bad); font-weight: 700; }
+      code { font-size: 12px; word-break: break-all; }
+      .verdict { font-size: 15px; font-weight: 700; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; }
+      .verdict.ok { background: rgba(26, 127, 90, .12); color: var(--ok); }
+      .verdict.bad { background: rgba(180, 35, 24, .1); color: var(--bad); }
+      button {
+        width: 100%; padding: 13px; font-size: 15px; font-weight: 600;
+        border: 0; border-radius: 10px; background: #2b47ee; color: #fff;
+        -webkit-appearance: none;
+      }
+      .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>启动屏诊断</h1>
+    <p class="sub">把这个页面在 iPad 的 Safari 里打开，截图发给开发者即可。</p>
+
+    <div id="verdict" class="verdict">正在检查…</div>
+
+    <div class="card">
+      <h2>先确认这一条（最常见的原因）</h2>
+      <p style="margin:0 0 10px;font-size:14px">
+        从<strong>主屏幕图标</strong>打开 App 时，顶部有没有 Safari 的地址栏？
+      </p>
+      <ul style="margin:0;padding-left:20px;font-size:14px">
+        <li style="margin-bottom:8px">
+          <strong>有地址栏</strong> → 它被加成了「书签」而不是 Web App，这种情况系统不会给启动屏。
+          iOS 26 在「添加到主屏幕」时多了一个 <strong>「以 Web App 打开」</strong> 开关，
+          关掉就会变成书签。删掉图标，重新添加时把那个开关<strong>打开</strong>。
+        </li>
+        <li>
+          <strong>没有地址栏、全屏</strong> → Web App 模式是对的，那请看下面的诊断结果。
+        </li>
+      </ul>
+      <p class="hint">
+        注意：这一项只有在<strong>从主屏幕图标</strong>打开时才有意义。现在这个页面是在 Safari 里打开的，
+        所以下面「以 Web App 打开」显示 false 属于正常。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>设备信息</h2>
+      <dl id="device"></dl>
+    </div>
+
+    <div class="card">
+      <h2>启动图匹配条件逐条拆解</h2>
+      <table>
+        <thead><tr><th>条件</th><th>是否成立</th></tr></thead>
+        <tbody id="conditions"></tbody>
+      </table>
+      <p class="hint">任何一条不成立，整条 media 查询就匹配不上，iOS 就会退回白屏。</p>
+    </div>
+
+    <div class="card">
+      <h2>页面里声明的启动图</h2>
+      <dl id="links"></dl>
+      <div id="matching"></div>
+    </div>
+
+    <button id="copy" type="button">复制全部结果</button>
+    <p class="hint" id="copyhint"></p>
+
+    <script>
+      (function () {
+        var rows = [];
+        function line(label, value) {
+          rows.push(label + "：" + value);
+          return "<dt>" + label + "</dt><dd>" + value + "</dd>";
+        }
+
+        // ---- 设备信息 ----
+        var vv = window.visualViewport;
+        var device =
+          line("User-Agent", navigator.userAgent) +
+          line("以 Web App 打开（standalone）", String(!!(navigator.standalone || window.matchMedia("(display-mode: standalone)").matches))) +
+          line("devicePixelRatio", String(window.devicePixelRatio)) +
+          line("screen.width × height", screen.width + " × " + screen.height) +
+          line("screen.availWidth × availHeight", screen.availWidth + " × " + screen.availHeight) +
+          line("window.innerWidth × innerHeight", window.innerWidth + " × " + window.innerHeight) +
+          (vv ? line("visualViewport", Math.round(vv.width) + " × " + Math.round(vv.height) + "（scale " + vv.scale.toFixed(2) + "）") : "") +
+          line("屏幕方向", window.matchMedia("(orientation: portrait)").matches ? "竖屏" : "横屏");
+        document.getElementById("device").innerHTML = device;
+
+        // ---- 逐条拆解 ----
+        // 关键：把 -webkit-device-pixel-ratio 和标准的 resolution 分开测。
+        // 如果前者不成立、后者成立，那问题就出在这里 —— iOS 换了认的写法。
+        var CHECKS = [
+          ["(device-width: 820px)", "宽 = 820pt（iPad Air 5）"],
+          ["(device-height: 1180px)", "高 = 1180pt"],
+          ["(-webkit-device-pixel-ratio: 2)", "像素比 = 2（老写法）"],
+          ["(resolution: 2dppx)", "像素比 = 2（标准写法）"],
+          ["(device-pixel-ratio: 2)", "像素比 = 2（无前缀）"],
+          ["(orientation: portrait)", "当前是竖屏"],
+          ["(orientation: landscape)", "当前是横屏"]
+        ];
+        var condHtml = "";
+        var condRows = [];
+        CHECKS.forEach(function (item) {
+          var matched = false;
+          try {
+            matched = window.matchMedia(item[0]).matches;
+          } catch (error) {
+            matched = false;
+          }
+          condHtml +=
+            '<tr><td><code>' + item[0] + '</code><br><span style="color:#5b6675">' + item[1] + "</span></td><td class=\"" +
+            (matched ? "yes" : "no") + '">' + (matched ? "成立" : "不成立") + "</td></tr>";
+          condRows.push(item[0] + " → " + (matched ? "成立" : "不成立"));
+        });
+        document.getElementById("conditions").innerHTML = condHtml;
+
+        // ---- 页面里真实声明的启动图 ----
+        fetch("/", { cache: "no-store" })
+          .then(function (r) { return r.text(); })
+          .then(function (html) {
+            var doc = new DOMParser().parseFromString(html, "text/html");
+            var links = [].slice.call(doc.querySelectorAll('link[rel="apple-touch-startup-image"]'));
+            var matched = [];
+            var linkRows = [];
+            links.forEach(function (el) {
+              var media = el.getAttribute("media") || "";
+              var hit = false;
+              try {
+                hit = window.matchMedia(media).matches;
+              } catch (error) {
+                hit = false;
+              }
+              if (hit) matched.push(el.getAttribute("href"));
+              linkRows.push(media + " → " + (hit ? "匹配" : "不匹配"));
+            });
+
+            document.getElementById("links").innerHTML =
+              line("页面里声明的启动图条数", String(links.length)) +
+              line("当前设备匹配到的条数", String(matched.length));
+
+            document.getElementById("matching").innerHTML = matched.length
+              ? '<p style="font-size:13px;margin:10px 0 0"><strong>匹配到的图：</strong><br><code>' +
+                matched.join("<br>") + "</code></p>"
+              : '<p style="font-size:13px;margin:10px 0 0;color:#b42318"><strong>没有任何一条匹配上 —— iOS 会退回白屏。</strong></p>';
+
+            var verdict = document.getElementById("verdict");
+            if (matched.length) {
+              verdict.className = "verdict ok";
+              verdict.textContent = "✓ 有 " + matched.length + " 条启动图匹配上了，系统层面是通的。";
+            } else {
+              verdict.className = "verdict bad";
+              verdict.textContent = "✗ 没有任何启动图匹配上（共声明 " + links.length + " 条）";
+            }
+
+            rows.push("", "---- 启动图 ----", "声明条数：" + links.length, "匹配条数：" + matched.length);
+            rows = rows.concat(linkRows);
+
+            window.__report = rows.join("\n");
+          })
+          .catch(function (error) {
+            document.getElementById("matching").innerHTML =
+              '<p style="color:#b42318;font-size:13px">读取页面失败：' + error + "</p>";
+            window.__report = rows.join("\n");
+          });
+
+        rows.push("", "---- 条件逐条 ----");
+        rows = rows.concat(condRows);
+
+        document.getElementById("copy").addEventListener("click", function () {
+          var text = (window.__report || rows.join("\n"));
+          var hint = document.getElementById("copyhint");
+          function done(ok) {
+            hint.textContent = ok ? "已复制，粘贴到对话里即可。" : "复制失败，请直接截图。";
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+          } else {
+            done(false);
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

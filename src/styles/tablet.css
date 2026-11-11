@@ -1,0 +1,580 @@
+/* ==========================================================================
+   tablet.css — iPad / 平板端 UI 优化层
+   在 main.css 之后加载，是平板尺寸下的最终裁决层（统一用 !important 收口）。
+
+   断点约定
+   --------------------------------------------------------------------------
+   < 1024px                    侧栏收成抽屉，底部标签栏常驻
+   768 – 1023px (+高 ≥600)     平板竖屏 / Split View：双列内容 + 底部标签栏
+   1024 – 1180px               平板横屏：侧栏常驻为图标导航条（rail）
+   1181 – 1366px 且触控屏       大号 iPad 横屏：同样使用 rail，避免导航消失
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. 触控基础：缩放、点击、滚动手感
+   -------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* iOS 上字号 < 16px 的输入框会在聚焦时整页放大 */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button,
+  a,
+  label,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  .table-wrap,
+  .heatmap-scroll,
+  .composite-dialog-body,
+  .announcement-list,
+  .sidebar,
+  .global-search-popover {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+/* 触摸设备上 hover 会「粘住」，去掉位移和浮起，保留点击态 */
+@media (hover: none) {
+  .nav-item:hover,
+  .list-card:hover,
+  .subject-editor:hover,
+  .record-card:hover,
+  .primary-button:hover,
+  .secondary-button:hover,
+  .ghost-button:hover,
+  .icon-button:hover,
+  .account-pill:hover,
+  .pager button:not(:disabled):hover,
+  .global-search-result:hover,
+  .field-suggestions button:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  tbody tr:hover {
+    background: transparent;
+  }
+
+  
+  .list-card:active,
+  .record-card:active {
+    transform: scale(0.995);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2. 触控目标放大到 44px（Apple HIG 下限）
+   -------------------------------------------------------------------------- */
+@media (min-width: 768px) and (pointer: coarse) {
+  .nav-item,
+  .ghost-button,
+  .primary-button,
+  .secondary-button,
+  .icon-button,
+  .icon-only,
+  .sync-pill,
+  .account-pill,
+  .pager button,
+  .drawer-close,
+  .menu-button {
+    min-height: 44px;
+  }
+
+  .icon-only,
+  .icon-button {
+    width: 44px;
+  }
+
+  .bottom-nav-item {
+    min-height: 52px;
+  }
+
+  .theme-switcher button {
+    min-height: 38px;
+  }
+
+  th,
+  td {
+    padding: 14px 12px;
+  }
+
+  .select-column input,
+  .switch-row input {
+    width: 20px;
+    min-height: 20px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. 小于 1024px：底部标签栏常驻（侧栏此时是抽屉）
+   -------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .bottom-nav {
+    display: grid !important;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 30;
+    min-height: 60px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    padding: 5px;
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgba(16, 24, 40, 0.16);
+  }
+
+  /* 721–1023px 原本没有 .bottom-nav-item 的基础样式，这里补齐 */
+  .bottom-nav-item {
+    min-width: 0;
+    min-height: 52px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 3px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  .bottom-nav-item.router-link-active {
+    background: linear-gradient(180deg, #eff8ff, #ffffff);
+    color: var(--blue);
+    box-shadow: 0 8px 18px rgba(36, 120, 232, 0.12);
+  }
+
+  .workspace {
+    padding-bottom: calc(94px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   4. 平板竖屏 / Split View（768 – 1023px）
+   -------------------------------------------------------------------------- */
+@media (min-width: 768px) and (max-width: 1023px) and (min-height: 600px) {
+  .workspace {
+    padding: 16px 20px calc(94px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* 顶栏：吸顶 + 工具区换行，搜索保留 */
+  .topbar {
+    position: sticky;
+    /* 吸顶时要停在状态栏下方，否则滚起来会被 iPad 的时钟压住。
+       0..safe-area-inset-top 那一条露出的是页面底色，看起来就是干净的留白。 */
+    top: env(safe-area-inset-top, 0px);
+    z-index: 15;
+    /* 必须显式写回 row。main.css 的 @media (max-width: 820px) 把 .topbar 改成了
+       column，而平板竖屏的区间是 768–1023px —— 768–820px 这一段两个媒体查询同时命中，
+       column 就漏了进来。后果是下面 .topbar-title 的 flex-basis 240px 从「宽度」
+       变成了「高度」，顶栏被撑到 313px 高（差不多占掉三分之一屏）。
+       这里显式声明 row，等于把被覆盖掉的意图写回来。 */
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    min-height: 60px;
+    margin-bottom: 18px;
+    padding: 10px 0 !important;
+    gap: 12px;
+    background: rgba(245, 247, 251, 0.92);
+    backdrop-filter: blur(14px);
+  }
+
+  .topbar-title {
+    flex: 1 1 240px;
+    width: auto;
+  }
+
+  p.topbar-heading {
+    font-size: 28px;
+    line-height: 1.15;
+  }
+
+  .topbar-tools {
+    width: auto !important;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ≤820px 的手机规则会把这些藏起来，平板上放回 */
+  .topbar-tools > .search-box,
+  .topbar-tools > .theme-switcher,
+  .topbar-tools > .account-pill,
+  .topbar-tools > .sync-pill,
+  .topbar-tools > .ghost-button:last-child {
+    display: inline-flex !important;
+  }
+
+  .topbar-tools > .search-box {
+    width: min(240px, 46vw);
+    flex: 1 1 180px;
+  }
+
+  /* 双列内容，避免手机上那种「一条到底」的窄条 */
+  
+  .composite-total-bar,
+  .sync-stats,
+  .form-row,
+  .form-row.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  
+  .composite-source-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .content-grid,
+  .chart-grid,
+  .composite-source-editor,
+  .subject-editor {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  
+
+  
+
+  
+  .composite-selection-actions,
+  .subject-editor-actions {
+    justify-content: flex-start;
+  }
+
+  
+
+  .section-head {
+    flex-wrap: wrap;
+  }
+
+  /* 平板上表格比卡片列表更好用 */
+  .desktop-record-table {
+    display: block !important;
+  }
+
+  .mobile-record-list {
+    display: none !important;
+  }
+
+  .table-wrap {
+    overflow: auto;
+    max-width: 100%;
+  }
+
+  .chart-box {
+    height: 300px;
+  }
+
+  .panel,
+  .detail-panel,
+  .loading-panel {
+    padding: 20px;
+  }
+
+  
+
+  
+
+  .filter-bar {
+    grid-template-columns: minmax(0, 1fr) 160px;
+  }
+
+  .filter-bar.with-actions {
+    grid-template-columns: minmax(0, 1fr) 160px auto auto;
+  }
+
+  /* 弹窗按平板尺寸重新居中 */
+  .composite-dialog-backdrop,
+  .signature-dialog-backdrop {
+    padding: 24px;
+  }
+
+  .composite-dialog {
+    width: min(920px, 100%) !important;
+    max-height: calc(100dvh - 48px) !important;
+    padding: 18px !important;
+    border-radius: 16px;
+  }
+
+  .signature-dialog {
+    width: min(460px, 100%) !important;
+  }
+
+  /* 竖屏平板上导出弹窗改成单列：左右分栏在这个宽度会把预览压得太窄，
+     而「按卷子分列」的矩阵表本来就需要横向空间 */
+  .export-dialog-backdrop {
+    padding: 20px;
+  }
+
+  .export-dialog {
+    width: min(760px, 100%) !important;
+    max-height: calc(100dvh - 40px) !important;
+    padding: 16px !important;
+  }
+
+  .export-dialog-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .export-dialog-side {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    padding-top: 16px;
+    padding-left: 0;
+  }
+
+  .export-preview-table-wrap {
+    max-height: 340px;
+  }
+
+  .export-field-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .export-field-grid-flat {
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  }
+}
+
+/* --------------------------------------------------------------------------
+   5. 平板横屏 / 大号 iPad（1024 – 1366px，含触控屏）
+   侧栏常驻为图标导航条，不再藏进抽屉
+   -------------------------------------------------------------------------- */
+@media (min-width: 1024px) and (max-width: 1180px),
+  (min-width: 1181px) and (max-width: 1366px) and (pointer: coarse) {
+  .sidebar {
+    width: 92px !important;
+    max-width: 92px !important;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 8px 14px !important;
+    gap: 10px;
+    transform: none !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+  }
+
+  /* 抵消抽屉模式下「收起即隐藏子元素」的规则 */
+  .sidebar > .desktop-brand {
+    display: flex !important;
+    justify-content: center;
+    min-height: 52px;
+    padding: 6px 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .sidebar > .desktop-brand > span:last-child {
+    display: none !important;
+  }
+
+  .sidebar > .desktop-brand .brand-mark {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
+  }
+
+  .sidebar > .sidebar-head,
+  .sidebar > .sidebar-section-label,
+  .sidebar > .sidebar-card {
+    display: none !important;
+  }
+
+  .sidebar > .nav-list {
+    display: grid !important;
+    gap: 6px;
+  }
+
+  /* 导航项改为「图标在上、文字在下」的竖直排列 */
+  .nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    min-height: 68px;
+    padding: 8px 4px;
+    border-radius: 14px;
+    text-align: center;
+  }
+
+  .nav-item span {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /* 必须带上 .router-link-active 分支，否则选中项会被 main.css 的
+     `.nav-item.router-link-active svg`（更高优先级）压回 18px */
+  .nav-item svg,
+  .nav-item.router-link-active svg {
+    width: 40px !important;
+    height: 40px !important;
+    padding: 9px !important;
+    border-radius: 12px;
+  }
+
+  .nav-item::before {
+    display: none;
+  }
+
+  .nav-item:hover {
+    transform: none;
+  }
+
+  .workspace {
+    width: calc(100% - 92px) !important;
+    margin-left: 92px !important;
+    padding: 18px 20px 30px !important;
+  }
+
+  .menu-button,
+  .drawer-close,
+  .sidebar-backdrop,
+  .bottom-nav {
+    display: none !important;
+  }
+
+  .topbar {
+    align-items: center !important;
+    flex-wrap: wrap;
+    min-height: 62px;
+    margin-bottom: 20px;
+    padding: 0 !important;
+    gap: 12px;
+  }
+
+  .topbar-title {
+    flex: 1 1 240px !important;
+    width: auto !important;
+  }
+
+  p.topbar-heading {
+    font-size: 28px !important;
+    line-height: 1.15 !important;
+  }
+
+  .topbar-tools {
+    width: auto !important;
+    justify-content: flex-end !important;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+
+  .topbar-tools .search-box {
+    width: min(260px, 34vw) !important;
+  }
+
+  
+
+  .content-grid,
+  .chart-grid{
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  
+
+  .chart-box {
+    height: 320px;
+  }
+
+  .panel,
+  .detail-panel,
+  .loading-panel {
+    padding: 22px;
+  }
+
+  .form-row,
+  .form-row.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  
+  .composite-source-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .composite-dialog {
+    width: min(980px, calc(100vw - 72px)) !important;
+    max-height: calc(100dvh - 56px) !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   6. 从 main.css 的旧平板块中收敛过来的零散规则
+   （原先散落在 3 个重复的 @media (min-width:821px) and (max-width:1180px) 里）
+   -------------------------------------------------------------------------- */
+@media (min-width: 768px) and (max-width: 1180px) {
+  /* 顶栏账号 / 同步文字过长时省略，避免把工具栏撑爆 */
+  .topbar-tools .account-pill span,
+  .topbar-tools .sync-pill span {
+    max-width: 118px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 成绩页的查询 / 排序条在平板上换行堆叠，不挤成一团 */
+  .records-query-status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .records-query-chips {
+    justify-content: flex-start;
+  }
+
+  
+  .records-sort-menu,
+  .records-sort-trigger {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .records-sort-trigger {
+    justify-content: center;
+  }
+
+  .records-content-grid .panel-wide {
+    overflow: hidden;
+  }
+
+  .records-content-grid .panel-wide.full-span {
+    grid-column: 1 / -1;
+  }
+
+  .record-restore-panel,
+  .health-check-panel,
+  .batch-management-panel,
+  .composite-selection-bar {
+    gap: 12px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   7. 横屏安全区：避开 home indicator 与圆角
+   -------------------------------------------------------------------------- */
+@supports (padding: env(safe-area-inset-left)) {
+  @media (orientation: landscape) and (pointer: coarse) {
+    .workspace {
+      /* !important 是必要的：上面各断点用 padding 简写（含 !important）覆盖过 */
+      padding-left: max(20px, env(safe-area-inset-left)) !important;
+      padding-right: max(20px, env(safe-area-inset-right)) !important;
+    }
+  }
+}
